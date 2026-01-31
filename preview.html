@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subtitle Lanka - උපසිරැසි බාගන්න</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #1a1a1a;
+            --bg-card: #2a2a2a;
+            --bg-input: #333;
+            --text-primary: #fff;
+            --text-secondary: #999;
+            --accent-red: #ff4444;
+            --border-color: #444;
+            --border-radius: 20px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            position: relative;
+            padding-bottom: 100px;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .logo-circle {
+            width: 60px;
+            height: 60px;
+            border: 3px solid var(--text-primary);
+            border-radius: 50%;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 400;
+            letter-spacing: -0.5px;
+        }
+
+        .header-right {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            align-items: flex-end;
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 25px;
+            padding: 8px 20px;
+            width: 280px;
+        }
+
+        .search-box input {
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            font-size: 14px;
+            width: 100%;
+            outline: none;
+        }
+
+        .search-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            padding: 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .header-buttons {
+            display: flex;
+            gap: 15px;
+        }
+
+        .category-btn,
+        .login-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 8px 20px;
+            color: var(--text-primary);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .login-btn:hover,
+        .category-btn:hover {
+            background: var(--bg-card);
+            border-color: var(--text-primary);
+        }
+
+        /* Filter Section */
+        .filter-section {
+            background: var(--bg-card);
+            border: 2px solid var(--text-primary);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .name-input {
+            width: 100%;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 15px;
+            color: var(--text-primary);
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .name-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .filter-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+
+        .filter-select {
+            background: var(--bg-input);
+            border: 2px solid var(--text-primary);
+            border-radius: 25px;
+            padding: 12px 20px;
+            color: var(--text-primary);
+            font-size: 14px;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L6 6L11 1' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 15px center;
+            padding-right: 40px;
+        }
+
+        /* Wave Divider */
+        .wave-divider {
+            height: 60px;
+            background: transparent;
+            position: relative;
+            margin: 30px 0;
+        }
+
+        .wave-divider::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 100%;
+            background: transparent;
+            border-top: 2px solid var(--text-primary);
+            border-radius: 50% 50% 0 0;
+        }
+
+        /* Subtitles Section */
+        .subtitles-section {
+            margin-bottom: 80px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 400;
+            margin-bottom: 20px;
+        }
+
+        .subtitles-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .subtitle-card {
+            background: var(--bg-card);
+            border-radius: 15px;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .subtitle-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .subtitle-thumbnail {
+            width: 110px;
+            height: 110px;
+            background: var(--bg-input);
+            border-radius: 10px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        .subtitle-info {
+            flex: 1;
+        }
+
+        .subtitle-title {
+            color: var(--accent-red);
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+
+        .subtitle-meta {
+            color: var(--text-secondary);
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+
+        .subtitle-tags {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .tag {
+            background: var(--bg-input);
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .subtitle-progress {
+            width: 180px;
+            height: 4px;
+            background: var(--bg-input);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: var(--accent-red);
+        }
+
+        .download-btn {
+            width: 50px;
+            height: 50px;
+            background: transparent;
+            border: 2px solid var(--text-primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+
+        .download-btn:hover {
+            background: var(--text-primary);
+            transform: scale(1.1);
+        }
+
+        .download-btn:hover svg {
+            stroke: var(--bg-dark);
+        }
+
+        /* Footer */
+        footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--bg-dark);
+            padding: 15px 20px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .footer-nav {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-bottom: 10px;
+        }
+
+        .nav-icon {
+            background: transparent;
+            border: 2px solid var(--text-primary);
+            width: 40px;
+            height: 40px;
+            font-size: 20px;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-radius: 8px;
+        }
+
+        .nav-icon:hover {
+            background: var(--text-primary);
+            color: var(--bg-dark);
+        }
+
+        .copyright {
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            border-radius: var(--border-radius);
+            padding: 40px;
+            max-width: 450px;
+            width: 90%;
+            position: relative;
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: transparent;
+            border: none;
+            font-size: 30px;
+            color: var(--text-primary);
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background 0.3s ease;
+        }
+
+        .close-btn:hover {
+            background: var(--bg-input);
+        }
+
+        .modal-content h2 {
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+
+        .modal-content p {
+            color: var(--text-secondary);
+            margin-bottom: 30px;
+        }
+
+        .github-btn {
+            width: 100%;
+            background: var(--text-primary);
+            color: var(--bg-dark);
+            border: none;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: transform 0.3s ease;
+        }
+
+        .github-btn:hover {
+            transform: scale(1.02);
+        }
+
+        .upload-fab {
+            position: fixed;
+            bottom: 100px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            background: var(--accent-red);
+            border: none;
+            border-radius: 50%;
+            color: var(--text-primary);
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(255, 68, 68, 0.4);
+            transition: all 0.3s ease;
+            z-index: 100;
+            display: none;
+        }
+
+        .upload-fab:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 30px rgba(255, 68, 68, 0.6);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .filter-row {
+                grid-template-columns: 1fr;
+            }
+
+            .subtitle-card {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .subtitle-thumbnail {
+                width: 100%;
+                height: 150px;
+            }
+
+            .subtitle-progress {
+                width: 100%;
+            }
+
+            .search-box {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo-section">
+                <div class="logo-circle"></div>
+                <h1>subtitle lanka.</h1>
+            </div>
+            <div class="header-right">
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="Search">
+                    <button class="search-btn">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="2"/>
+                            <path d="M14 14L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="header-buttons">
+                    <button class="category-btn">drama</button>
+                    <button class="login-btn" id="loginBtn">login</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="filter-section">
+            <input type="text" class="name-input" id="nameInput" placeholder="name">
+            <div class="filter-row">
+                <select class="filter-select" id="countryFilter">
+                    <option value="">Country</option>
+                    <option value="korea">Korea</option>
+                    <option value="japan">Japan</option>
+                    <option value="china">China</option>
+                </select>
+                <select class="filter-select" id="yearFilter">
+                    <option value="">Years</option>
+                    <option value="2024">2024</option>
+                    <option value="2023">2023</option>
+                    <option value="2022">2022</option>
+                </select>
+                <select class="filter-select" id="genreFilter">
+                    <option value="">Genre</option>
+                    <option value="action">Action</option>
+                    <option value="romance">Romance</option>
+                    <option value="thriller">Thriller</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="wave-divider"></div>
+
+        <section class="subtitles-section">
+            <h2 class="section-title">subtitles/post</h2>
+            <div class="subtitles-grid" id="subtitlesGrid"></div>
+        </section>
+
+        <footer>
+            <div class="footer-nav">
+                <button class="nav-icon">□</button>
+                <button class="nav-icon">○</button>
+                <button class="nav-icon">□</button>
+            </div>
+            <p class="copyright">about © 2026</p>
+        </footer>
+    </div>
+
+    <!-- Login Modal -->
+    <div class="modal" id="loginModal">
+        <div class="modal-content">
+            <button class="close-btn" id="closeModal">&times;</button>
+            <h2>Login with GitHub</h2>
+            <p>Login to upload and manage subtitles</p>
+            <button class="github-btn" id="githubLoginBtn">
+                <svg height="24" width="24" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                </svg>
+                Continue with GitHub
+            </button>
+        </div>
+    </div>
+
+    <button class="upload-fab" id="uploadFab">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+    </button>
+
+    <script>
+        // Demo data
+        let subtitles = [
+            {
+                id: 1,
+                title: "THE DRAGON'S BLADE - SEASON 1",
+                uploader: 'Auter / Uploader',
+                country: 'korea',
+                year: '2024',
+                genre: 'action',
+                downloads: 247
+            },
+            {
+                id: 2,
+                title: "MYSTIC ROMANCE - EP 1-16",
+                uploader: 'SubTeam LK',
+                country: 'korea',
+                year: '2024',
+                genre: 'romance',
+                downloads: 182
+            },
+            {
+                id: 3,
+                title: "NIGHT WALKER - COMPLETE SERIES",
+                uploader: 'Sinhala Subs',
+                country: 'japan',
+                year: '2023',
+                genre: 'thriller',
+                downloads: 156
+            },
+            {
+                id: 4,
+                title: "LOVE IN TOKYO - MOVIE",
+                uploader: 'Film Subs LK',
+                country: 'japan',
+                year: '2024',
+                genre: 'romance',
+                downloads: 98
+            }
+        ];
+
+        let currentUser = null;
+
+        function renderSubtitles(filtered = null) {
+            const grid = document.getElementById('subtitlesGrid');
+            const items = filtered || subtitles;
+            
+            grid.innerHTML = items.map(sub => `
+                <div class="subtitle-card">
+                    <div class="subtitle-thumbnail">No Image</div>
+                    <div class="subtitle-info">
+                        <div class="subtitle-title">${sub.title}</div>
+                        <div class="subtitle-meta">${sub.uploader}</div>
+                        <div class="subtitle-tags">
+                            ${sub.country ? `<span class="tag">${sub.country}</span>` : ''}
+                            ${sub.year ? `<span class="tag">${sub.year}</span>` : ''}
+                            ${sub.genre ? `<span class="tag">${sub.genre}</span>` : ''}
+                        </div>
+                        <div class="subtitle-progress">
+                            <div class="progress-bar" style="width: ${Math.min(sub.downloads / 5, 100)}%"></div>
+                        </div>
+                    </div>
+                    <button class="download-btn" onclick="downloadSubtitle(${sub.id})">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function downloadSubtitle(id) {
+            const subtitle = subtitles.find(s => s.id === id);
+            if (!subtitle) return;
+            
+            subtitle.downloads++;
+            renderSubtitles();
+            
+            // Create sample subtitle
+            const content = `1\n00:00:00,000 --> 00:00:03,000\n${subtitle.title}\n\n2\n00:00:03,000 --> 00:00:06,000\nSubtitles by ${subtitle.uploader}`;
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${subtitle.title}.srt`;
+            link.click();
+            URL.revokeObjectURL(url);
+            
+            alert('Download started! ✅');
+        }
+
+        function performFilter() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const name = document.getElementById('nameInput').value.toLowerCase();
+            const country = document.getElementById('countryFilter').value;
+            const year = document.getElementById('yearFilter').value;
+            const genre = document.getElementById('genreFilter').value;
+            
+            const filtered = subtitles.filter(sub => {
+                const matchesSearch = !search || sub.title.toLowerCase().includes(search);
+                const matchesName = !name || sub.title.toLowerCase().includes(name);
+                const matchesCountry = !country || sub.country === country;
+                const matchesYear = !year || sub.year === year;
+                const matchesGenre = !genre || sub.genre === genre;
+                
+                return matchesSearch && matchesName && matchesCountry && matchesYear && matchesGenre;
+            });
+            
+            renderSubtitles(filtered);
+        }
+
+        // Login
+        document.getElementById('loginBtn').addEventListener('click', () => {
+            if (!currentUser) {
+                document.getElementById('loginModal').classList.add('active');
+            } else {
+                if (confirm('Logout?')) {
+                    currentUser = null;
+                    document.getElementById('loginBtn').textContent = 'login';
+                    document.getElementById('uploadFab').style.display = 'none';
+                }
+            }
+        });
+
+        document.getElementById('githubLoginBtn').addEventListener('click', () => {
+            currentUser = { login: 'demo_user' };
+            document.getElementById('loginBtn').textContent = 'demo_user';
+            document.getElementById('uploadFab').style.display = 'flex';
+            document.getElementById('loginModal').classList.remove('active');
+            alert('Login successful! ✅ Click the + button to upload.');
+        });
+
+        document.getElementById('closeModal').addEventListener('click', () => {
+            document.getElementById('loginModal').classList.remove('active');
+        });
+
+        document.getElementById('uploadFab').addEventListener('click', () => {
+            alert('Upload form would open here! 📤\n\nIn the full version, you can:\n• Upload subtitle files\n• Add title and details\n• Set country, year, genre\n• Upload thumbnail image');
+        });
+
+        // Filters
+        document.getElementById('searchInput').addEventListener('input', performFilter);
+        document.getElementById('nameInput').addEventListener('input', performFilter);
+        document.getElementById('countryFilter').addEventListener('change', performFilter);
+        document.getElementById('yearFilter').addEventListener('change', performFilter);
+        document.getElementById('genreFilter').addEventListener('change', performFilter);
+
+        // Initial render
+        renderSubtitles();
+    </script>
+</body>
+</html>
