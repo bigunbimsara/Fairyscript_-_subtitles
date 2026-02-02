@@ -1,18 +1,54 @@
-// State
+// ═══════════════════════════════════════════════════════════════════
+// FAIRYSCRIPT - SINHALA SUBTITLES PLATFORM
+// With Chunked Upload Support (5MB files)
+// ═══════════════════════════════════════════════════════════════════
+
+// State Management
 let currentUser = null;
 let subtitles = [];
 let unsubscribeSubtitles = null;
 
-// Initialize
+// File size limits (in bytes)
+const MAX_SUBTITLE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2MB
+const CHUNK_SIZE = 200 * 1024; // 200KB per chunk
+
+// ═══════════════════════════════════════════════════════════════════
+// INITIALIZATION
+// ═══════════════════════════════════════════════════════════════════
+
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('═══════════════════════════════════════════');
+    console.log('🚀 Fairyscript Application Starting...');
+    console.log('═══════════════════════════════════════════');
+    
+    if (typeof firebase === 'undefined') {
+        console.error('❌ CRITICAL: Firebase SDK not loaded!');
+        showNotification('Configuration error. Please contact admin.', 'error');
+        return;
+    }
+    
+    if (typeof auth === 'undefined' || typeof db === 'undefined') {
+        console.error('❌ CRITICAL: Firebase not initialized!');
+        showNotification('Configuration error. Please refresh page.', 'error');
+        return;
+    }
+    
+    console.log('✅ Firebase SDK loaded');
+    console.log('✅ Firebase initialized');
+    
     setupAuthListener();
     setupEventListeners();
+    
+    console.log('✅ Application initialized successfully');
 });
 
-// ========== AUTHENTICATION ==========
+// ═══════════════════════════════════════════════════════════════════
+// AUTHENTICATION
+// ═══════════════════════════════════════════════════════════════════
 
 function setupAuthListener() {
-    auth.onAuthStateChanged(async (user) => {
+    auth.onAuthStateChanged((user) => {
         if (user) {
             currentUser = {
                 uid: user.uid,
@@ -22,45 +58,66 @@ function setupAuthListener() {
                 provider: user.providerData[0]?.providerId
             };
             
-            console.log('User logged in:', currentUser);
+            console.log('✅ USER LOGGED IN:', currentUser.email);
             updateUIForUser();
             loadSubtitles();
         } else {
             currentUser = null;
-            console.log('User logged out');
+            console.log('❌ User logged out');
             updateUIForLoggedOut();
-            loadSubtitles(); // Still load subtitles for viewing
+            loadSubtitles();
         }
     });
 }
 
 function loginWithGitHub() {
+    const githubProvider = new firebase.auth.GithubAuthProvider();
     auth.signInWithPopup(githubProvider)
         .then((result) => {
-            console.log('Login successful:', result.user);
+            console.log('✅ GitHub login successful');
             closeModal('loginModal');
-            showNotification('Login successful! Welcome ' + result.user.displayName);
+            showNotification('Welcome ' + result.user.displayName + '! 🎉');
         })
-        .catch((error) => {
-            console.error('Login error:', error);
-            if (error.code === 'auth/popup-closed-by-user') {
-                showNotification('Login cancelled', 'error');
-            } else {
-                showNotification('Login failed. Please try again.', 'error');
-            }
-        });
+        .catch((error) => handleLoginError(error));
+}
+
+function loginWithGoogle() {
+    const googleProvider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithPopup(googleProvider)
+        .then((result) => {
+            console.log('✅ Google login successful');
+            closeModal('loginModal');
+            showNotification('Welcome ' + result.user.displayName + '! 🎉');
+        })
+        .catch((error) => handleLoginError(error));
+}
+
+function handleLoginError(error) {
+    console.error('Login error:', error.code, error.message);
+    let userMessage = 'Login failed. ';
+    
+    switch(error.code) {
+        case 'auth/popup-closed-by-user':
+            userMessage = 'Login cancelled.';
+            break;
+        case 'auth/unauthorized-domain':
+            userMessage = 'Domain not authorized. Add ' + window.location.hostname + ' to Firebase.';
+            break;
+        case 'auth/popup-blocked':
+            userMessage = 'Popup blocked. Please allow popups.';
+            break;
+        default:
+            userMessage = 'Login failed: ' + error.message;
+    }
+    
+    showNotification(userMessage, 'error');
 }
 
 function logout() {
     if (confirm('Are you sure you want to logout?')) {
         auth.signOut()
-            .then(() => {
-                showNotification('Logged out successfully');
-            })
-            .catch((error) => {
-                console.error('Logout error:', error);
-                showNotification('Logout failed', 'error');
-            });
+            .then(() => showNotification('Logged out successfully'))
+            .catch((error) => showNotification('Logout failed', 'error'));
     }
 }
 
@@ -73,7 +130,7 @@ function updateUIForUser() {
         loginBtn.textContent = displayName;
         loginBtn.onclick = logout;
         loginBtn.classList.add('logged-in');
-        uploadFab.style.display = 'flex';
+        if (uploadFab) uploadFab.style.display = 'flex';
     }
 }
 
@@ -84,43 +141,129 @@ function updateUIForLoggedOut() {
     loginBtn.textContent = 'login';
     loginBtn.onclick = () => openModal('loginModal');
     loginBtn.classList.remove('logged-in');
-    uploadFab.style.display = 'none';
+    if (uploadFab) uploadFab.style.display = 'none';
 }
 
-// ========== SUBTITLE MANAGEMENT ==========
+// ═══════════════════════════════════════════════════════════════════
+// CHUNKED FILE OPERATIONS
+// ═══════════════════════════════════════════════════════════════════
+
+async function uploadFileInChunks(file, type) {
+    console.log(`📦 Uploading ${type} in chunks...`);
+    console.log(`File size: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+    
+    const base64 = await fileToBase64(file);
+    const base64Data = base64.split(',')[1]; // Remove data URL prefix
+    
+    const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
+    console.log(`Total chunks: ${totalChunks}`);
+    
+    const chunkIds = [];
+    
+    // Upload each chunk
+    for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, base64Data.length);
+        const chunkData = base64Data.substring(start, end);
+        
+        const chunkDoc = {
+            data: chunkData,
+            index: i,
+            uploaderId: currentUser.uid,
+            uploadDate: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        const chunkRef = await db.collection('fileChunks').add(chunkDoc);
+        chunkIds.push(chunkRef.id);
+        
+        console.log(`✅ Chunk ${i + 1}/${totalChunks} uploaded`);
+    }
+    
+    return {
+        chunkIds: chunkIds,
+        totalChunks: totalChunks,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type
+    };
+}
+
+async function downloadFileFromChunks(chunkIds, fileName, mimeType) {
+    console.log(`📦 Downloading ${chunkIds.length} chunks...`);
+    
+    const chunks = [];
+    
+    // Download all chunks
+    for (let i = 0; i < chunkIds.length; i++) {
+        const chunkDoc = await db.collection('fileChunks').doc(chunkIds[i]).get();
+        if (!chunkDoc.exists) {
+            throw new Error(`Chunk ${i} not found`);
+        }
+        chunks.push(chunkDoc.data().data);
+        console.log(`✅ Chunk ${i + 1}/${chunkIds.length} downloaded`);
+    }
+    
+    // Reassemble
+    const completeBase64 = chunks.join('');
+    const base64WithPrefix = `data:${mimeType};base64,${completeBase64}`;
+    
+    return base64WithPrefix;
+}
+
+async function deleteFileChunks(chunkIds) {
+    console.log(`🗑️ Deleting ${chunkIds.length} chunks...`);
+    
+    const batch = db.batch();
+    
+    chunkIds.forEach(chunkId => {
+        const chunkRef = db.collection('fileChunks').doc(chunkId);
+        batch.delete(chunkRef);
+    });
+    
+    await batch.commit();
+    console.log('✅ Chunks deleted');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SUBTITLE MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════
 
 function loadSubtitles() {
+    console.log('Loading subtitles from Firestore...');
     showLoading(true);
     
-    // Unsubscribe from previous listener if exists
     if (unsubscribeSubtitles) {
         unsubscribeSubtitles();
     }
     
-    // Real-time listener for subtitles
     unsubscribeSubtitles = db.collection('subtitles')
         .orderBy('uploadDate', 'desc')
-        .onSnapshot((snapshot) => {
-            subtitles = [];
-            snapshot.forEach((doc) => {
-                subtitles.push({
-                    id: doc.id,
-                    ...doc.data()
+        .onSnapshot(
+            (snapshot) => {
+                subtitles = [];
+                snapshot.forEach((doc) => {
+                    subtitles.push({
+                        id: doc.id,
+                        ...doc.data()
+                    });
                 });
-            });
-            
-            console.log('Loaded subtitles:', subtitles.length);
-            renderSubtitles();
-            showLoading(false);
-        }, (error) => {
-            console.error('Error loading subtitles:', error);
-            showNotification('Failed to load subtitles', 'error');
-            showLoading(false);
-        });
+                
+                console.log('✅ Loaded', subtitles.length, 'subtitles');
+                renderSubtitles();
+                showLoading(false);
+            },
+            (error) => {
+                console.error('❌ Error loading subtitles:', error);
+                showNotification('Failed to load subtitles: ' + error.message, 'error');
+                showLoading(false);
+            }
+        );
 }
 
 function renderSubtitles(filtered = null) {
     const grid = document.getElementById('subtitlesGrid');
+    if (!grid) return;
+    
     const items = filtered || subtitles;
     
     if (items.length === 0) {
@@ -132,7 +275,9 @@ function renderSubtitles(filtered = null) {
                     <line x1="9" y1="15" x2="15" y2="15"></line>
                 </svg>
                 <p>No subtitles found</p>
-                ${!currentUser ? '<p class="hint">Login to upload subtitles!</p>' : '<p class="hint">Be the first to upload!</p>'}
+                ${!currentUser ? 
+                    '<p class="hint">Login to upload subtitles!</p>' : 
+                    '<p class="hint">Be the first to upload!</p>'}
             </div>
         `;
         return;
@@ -142,18 +287,35 @@ function renderSubtitles(filtered = null) {
 }
 
 function createSubtitleCard(subtitle) {
-    const imageUrl = subtitle.imageUrl || 'data:image/svg+xml,%3Csvg width="300" height="200" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="300" height="200" fill="%23222"/%3E%3Ctext x="50%25" y="50%25" fill="%23666" font-size="16" text-anchor="middle" dy=".3em"%3E' + encodeURIComponent(subtitle.title.substring(0, 20)) + '%3C/text%3E%3C/svg%3E';
+    // Handle both chunked and direct image storage
+    let imageUrl = 'data:image/svg+xml,%3Csvg width="300" height="200" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="300" height="200" fill="%23222"/%3E%3Ctext x="50%25" y="50%25" fill="%23666" font-size="16" text-anchor="middle" dy=".3em"%3E' + 
+        encodeURIComponent(subtitle.title.substring(0, 20)) + '%3C/text%3E%3C/svg%3E';
+    
+    if (subtitle.imageData) {
+        imageUrl = subtitle.imageData;
+    } else if (subtitle.imageChunkIds && subtitle.imageChunkIds.length > 0) {
+        // Image is chunked - will load on demand
+        imageUrl = 'data:image/svg+xml,%3Csvg width="300" height="200" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="300" height="200" fill="%23333"/%3E%3Ctext x="50%25" y="50%25" fill="%23999" font-size="14" text-anchor="middle" dy=".3em"%3ELoading...%3C/text%3E%3C/svg%3E';
+    }
     
     const uploadDate = subtitle.uploadDate?.toDate ? 
-        subtitle.uploadDate.toDate().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) :
-        'Recently';
+        subtitle.uploadDate.toDate().toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric' 
+        }) : 'Recently';
     
     const canDelete = currentUser && currentUser.uid === subtitle.uploaderId;
+    
+    const fileSizeMB = subtitle.fileSize ? (subtitle.fileSize / 1024 / 1024).toFixed(2) : '?';
     
     return `
         <div class="subtitle-card" data-id="${subtitle.id}">
             <div class="subtitle-thumbnail">
-                <img src="${imageUrl}" alt="${subtitle.title}" loading="lazy">
+                <img src="${imageUrl}" 
+                     alt="${subtitle.title}" 
+                     loading="lazy" 
+                     onerror="this.src='data:image/svg+xml,%3Csvg width=\\'300\\' height=\\'200\\' xmlns=\\'http://www.w3.org/2000/svg\\'%3E%3Crect width=\\'300\\' height=\\'200\\' fill=\\'%23222\\'/%3E%3C/svg%3E'">
                 ${canDelete ? `<button class="delete-btn" onclick="deleteSubtitle('${subtitle.id}')" title="Delete">🗑️</button>` : ''}
             </div>
             <div class="subtitle-info">
@@ -172,6 +334,7 @@ function createSubtitleCard(subtitle) {
                 ` : ''}
                 <div class="subtitle-stats">
                     <span>⬇️ ${subtitle.downloads || 0} downloads</span>
+                    <span>📦 ${fileSizeMB} MB</span>
                 </div>
             </div>
             <button class="download-btn" onclick="downloadSubtitle('${subtitle.id}')">
@@ -186,40 +349,62 @@ function createSubtitleCard(subtitle) {
 }
 
 async function downloadSubtitle(id) {
+    console.log('Downloading subtitle:', id);
+    
     const subtitle = subtitles.find(s => s.id === id);
-    if (!subtitle || !subtitle.fileUrl) {
-        showNotification('Subtitle file not found', 'error');
+    if (!subtitle) {
+        showNotification('Subtitle not found', 'error');
         return;
     }
     
     try {
+        showNotification('Preparing download...');
+        
+        let base64Data;
+        
+        // Check if subtitle is chunked or direct
+        if (subtitle.fileChunkIds && subtitle.fileChunkIds.length > 0) {
+            console.log('Downloading chunked file...');
+            base64Data = await downloadFileFromChunks(
+                subtitle.fileChunkIds, 
+                subtitle.fileName, 
+                subtitle.fileMimeType || 'text/plain'
+            );
+        } else if (subtitle.fileData) {
+            console.log('Downloading direct file...');
+            base64Data = subtitle.fileData;
+        } else {
+            throw new Error('Subtitle file not found');
+        }
+        
         // Increment download count
         await db.collection('subtitles').doc(id).update({
             downloads: firebase.firestore.FieldValue.increment(1)
         });
         
-        // Download the file
+        // Create download
+        const blob = base64ToBlob(base64Data, subtitle.fileMimeType || 'text/plain');
+        const url = URL.createObjectURL(blob);
+        
         const link = document.createElement('a');
-        link.href = subtitle.fileUrl;
+        link.href = url;
         link.download = subtitle.fileName || `${subtitle.title}.srt`;
-        link.target = '_blank';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         
+        setTimeout(() => URL.revokeObjectURL(url), 100);
+        
         showNotification('Download started!');
         
-        // Visual feedback
         const card = document.querySelector(`[data-id="${id}"]`);
         if (card) {
             card.style.transform = 'scale(0.98)';
-            setTimeout(() => {
-                card.style.transform = '';
-            }, 200);
+            setTimeout(() => card.style.transform = '', 200);
         }
     } catch (error) {
-        console.error('Download error:', error);
-        showNotification('Download failed', 'error');
+        console.error('❌ Download error:', error);
+        showNotification('Download failed: ' + error.message, 'error');
     }
 }
 
@@ -232,7 +417,6 @@ async function deleteSubtitle(id) {
     const subtitle = subtitles.find(s => s.id === id);
     if (!subtitle) return;
     
-    // Check ownership
     if (subtitle.uploaderId !== currentUser.uid) {
         showNotification('You can only delete your own subtitles', 'error');
         return;
@@ -243,38 +427,43 @@ async function deleteSubtitle(id) {
     }
     
     try {
+        console.log('Deleting subtitle:', id);
         showNotification('Deleting...');
         
-        // Delete file from storage
-        if (subtitle.filePath) {
-            await storage.ref(subtitle.filePath).delete().catch(err => {
-                console.warn('File deletion warning:', err);
-            });
+        // Delete file chunks if exists
+        if (subtitle.fileChunkIds && subtitle.fileChunkIds.length > 0) {
+            await deleteFileChunks(subtitle.fileChunkIds);
         }
         
-        // Delete image from storage
-        if (subtitle.imagePath) {
-            await storage.ref(subtitle.imagePath).delete().catch(err => {
-                console.warn('Image deletion warning:', err);
-            });
+        // Delete image chunks if exists
+        if (subtitle.imageChunkIds && subtitle.imageChunkIds.length > 0) {
+            await deleteFileChunks(subtitle.imageChunkIds);
         }
         
-        // Delete from Firestore
+        // Delete main document
         await db.collection('subtitles').doc(id).delete();
         
+        console.log('✅ Subtitle deleted');
         showNotification('Subtitle deleted successfully');
     } catch (error) {
-        console.error('Delete error:', error);
-        showNotification('Failed to delete subtitle', 'error');
+        console.error('❌ Delete error:', error);
+        showNotification('Failed to delete: ' + error.message, 'error');
     }
 }
 
-// ========== UPLOAD FUNCTIONALITY ==========
+// ═══════════════════════════════════════════════════════════════════
+// UPLOAD FUNCTIONALITY
+// ═══════════════════════════════════════════════════════════════════
 
 async function handleUploadSubmit(e) {
     e.preventDefault();
     
+    console.log('═══════════════════════════════════════════');
+    console.log('📤 UPLOAD PROCESS STARTED');
+    console.log('═══════════════════════════════════════════');
+    
     if (!currentUser) {
+        console.error('❌ User not authenticated');
         showNotification('Please login first', 'error');
         openModal('loginModal');
         return;
@@ -288,90 +477,153 @@ async function handleUploadSubmit(e) {
     const year = document.getElementById('uploadYear').value;
     const genre = document.getElementById('uploadGenre').value;
     
+    console.log('📋 Form Data:');
+    console.log('  Title:', title);
+    console.log('  Subtitle size:', subtitleFile ? (subtitleFile.size / 1024 / 1024).toFixed(2) + ' MB' : 'N/A');
+    console.log('  Image size:', imageFile ? (imageFile.size / 1024 / 1024).toFixed(2) + ' MB' : 'N/A');
+    
     if (!title || !subtitleFile) {
         showNotification('Please provide title and subtitle file', 'error');
         return;
     }
     
-    // Validate file size (5MB for subtitle, 2MB for image)
-    if (subtitleFile.size > 5 * 1024 * 1024) {
-        showNotification('Subtitle file is too large (max 5MB)', 'error');
+    if (subtitleFile.size > MAX_SUBTITLE_SIZE) {
+        const sizeMB = (subtitleFile.size / 1024 / 1024).toFixed(2);
+        showNotification(`Subtitle file too large! Size: ${sizeMB}MB, Max: 5MB`, 'error');
         return;
     }
     
-    if (imageFile && imageFile.size > 2 * 1024 * 1024) {
-        showNotification('Image file is too large (max 2MB)', 'error');
+    if (imageFile && imageFile.size > MAX_IMAGE_SIZE) {
+        const sizeMB = (imageFile.size / 1024 / 1024).toFixed(2);
+        showNotification(`Image too large! Size: ${sizeMB}MB, Max: 2MB`, 'error');
         return;
     }
     
     try {
         setUploadingState(true);
         
-        // Upload subtitle file to Storage
-        const subtitlePath = `subtitles/${currentUser.uid}/${Date.now()}_${subtitleFile.name}`;
-        const subtitleRef = storage.ref(subtitlePath);
-        await subtitleRef.put(subtitleFile);
-        const subtitleUrl = await subtitleRef.getDownloadURL();
-        
-        // Upload image if provided
-        let imageUrl = null;
-        let imagePath = null;
-        if (imageFile) {
-            imagePath = `images/${currentUser.uid}/${Date.now()}_${imageFile.name}`;
-            const imageRef = storage.ref(imagePath);
-            await imageRef.put(imageFile);
-            imageUrl = await imageRef.getDownloadURL();
+        // Upload subtitle file (chunked if > 200KB)
+        let subtitleStorage;
+        if (subtitleFile.size > CHUNK_SIZE) {
+            console.log('📦 Uploading subtitle in chunks...');
+            subtitleStorage = await uploadFileInChunks(subtitleFile, 'subtitle');
+        } else {
+            console.log('📄 Uploading subtitle directly...');
+            const base64 = await fileToBase64(subtitleFile);
+            subtitleStorage = {
+                fileData: base64,
+                fileName: subtitleFile.name,
+                fileSize: subtitleFile.size,
+                fileMimeType: subtitleFile.type
+            };
         }
         
-        // Create subtitle document in Firestore
-        const subtitleData = {
+        // Upload image file (chunked if > 200KB)
+        let imageStorage = null;
+        if (imageFile) {
+            if (imageFile.size > CHUNK_SIZE) {
+                console.log('📦 Uploading image in chunks...');
+                imageStorage = await uploadFileInChunks(imageFile, 'image');
+            } else {
+                console.log('🖼️ Uploading image directly...');
+                const base64 = await fileToBase64(imageFile);
+                imageStorage = {
+                    imageData: base64
+                };
+            }
+        }
+        
+        // Create main document
+        const subtitleDoc = {
             title,
             description,
-            fileUrl: subtitleUrl,
-            filePath: subtitlePath,
-            fileName: subtitleFile.name,
-            imageUrl,
-            imagePath,
             country,
             year,
             genre,
             uploaderId: currentUser.uid,
             uploaderName: currentUser.displayName || currentUser.email,
             uploadDate: firebase.firestore.FieldValue.serverTimestamp(),
-            downloads: 0
+            downloads: 0,
+            ...subtitleStorage,
+            ...imageStorage
         };
         
-        await db.collection('subtitles').add(subtitleData);
+        console.log('☁️ Saving to Firestore...');
+        const docRef = await db.collection('subtitles').add(subtitleDoc);
+        
+        console.log('═══════════════════════════════════════════');
+        console.log('✅ UPLOAD SUCCESS!');
+        console.log('Document ID:', docRef.id);
+        console.log('═══════════════════════════════════════════');
         
         showNotification('Subtitle uploaded successfully! 🎉');
         closeModal('uploadModal');
         document.getElementById('uploadForm').reset();
         
     } catch (error) {
-        console.error('Upload error:', error);
-        showNotification('Upload failed. Please try again.', 'error');
+        console.log('═══════════════════════════════════════════');
+        console.error('❌ UPLOAD FAILED');
+        console.error('Error:', error);
+        console.log('═══════════════════════════════════════════');
+        
+        let userMessage = 'Upload failed: ' + error.message;
+        
+        if (error.code === 'permission-denied') {
+            userMessage = 'Permission denied! Check Firestore rules.';
+        } else if (error.code === 'unauthenticated') {
+            userMessage = 'Session expired. Please logout and login again.';
+        }
+        
+        showNotification(userMessage, 'error');
+        
     } finally {
         setUploadingState(false);
     }
 }
 
+// Helper functions
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+function base64ToBlob(base64, mimeType) {
+    const byteString = atob(base64.split(',')[1]);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+    }
+    return new Blob([ab], { type: mimeType });
+}
+
 function setUploadingState(uploading) {
     const submitBtn = document.getElementById('submitBtn');
+    if (!submitBtn) return;
+    
     const btnText = submitBtn.querySelector('.btn-text');
     const btnLoader = submitBtn.querySelector('.btn-loader');
     
     submitBtn.disabled = uploading;
-    btnText.style.display = uploading ? 'none' : 'inline';
-    btnLoader.style.display = uploading ? 'inline' : 'none';
+    if (btnText) btnText.style.display = uploading ? 'none' : 'inline';
+    if (btnLoader) btnLoader.style.display = uploading ? 'inline' : 'none';
 }
 
-// ========== SEARCH AND FILTER ==========
+// ═══════════════════════════════════════════════════════════════════
+// SEARCH AND FILTER
+// ═══════════════════════════════════════════════════════════════════
 
 function setupSearchAndFilter() {
     const searchInput = document.getElementById('searchInput');
     const countryFilter = document.getElementById('countryFilter');
     const yearFilter = document.getElementById('yearFilter');
     const genreFilter = document.getElementById('genreFilter');
+    
+    if (!searchInput || !countryFilter || !yearFilter || !genreFilter) return;
     
     const performFilter = () => {
         const searchTerm = searchInput.value.toLowerCase();
@@ -401,87 +653,94 @@ function setupSearchAndFilter() {
     genreFilter.addEventListener('change', performFilter);
 }
 
-// ========== UI HELPERS ==========
+// ═══════════════════════════════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════════════════════════════
 
 function openModal(modalId) {
     const modal = document.getElementById(modalId);
-    modal.classList.add('active');
+    if (modal) modal.classList.add('active');
 }
 
 function closeModal(modalId) {
     const modal = document.getElementById(modalId);
-    modal.classList.remove('active');
+    if (modal) modal.classList.remove('active');
 }
 
 function showLoading(show) {
     const loader = document.getElementById('loadingIndicator');
     const grid = document.getElementById('subtitlesGrid');
-    loader.style.display = show ? 'flex' : 'none';
-    grid.style.display = show ? 'none' : 'grid';
+    if (loader) loader.style.display = show ? 'flex' : 'none';
+    if (grid) grid.style.display = show ? 'none' : 'grid';
 }
 
 function showNotification(message, type = 'success') {
-    // Create notification element
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
     notification.textContent = message;
-    
-    // Add to body
     document.body.appendChild(notification);
-    
-    // Show notification
     setTimeout(() => notification.classList.add('show'), 10);
-    
-    // Remove after 3 seconds
     setTimeout(() => {
         notification.classList.remove('show');
         setTimeout(() => notification.remove(), 300);
     }, 3000);
 }
 
-// ========== EVENT LISTENERS ==========
+// ═══════════════════════════════════════════════════════════════════
+// EVENT LISTENERS
+// ═══════════════════════════════════════════════════════════════════
 
 function setupEventListeners() {
-    // Login
-    document.getElementById('loginBtn').addEventListener('click', () => {
-        if (!currentUser) {
-            openModal('loginModal');
-        }
-    });
+    const loginBtn = document.getElementById('loginBtn');
+    if (loginBtn) {
+        loginBtn.addEventListener('click', () => {
+            if (!currentUser) openModal('loginModal');
+        });
+    }
     
-    document.getElementById('githubLoginBtn').addEventListener('click', loginWithGitHub);
-    document.getElementById('closeModal').addEventListener('click', () => closeModal('loginModal'));
+    const githubLoginBtn = document.getElementById('githubLoginBtn');
+    const googleLoginBtn = document.getElementById('googleLoginBtn');
+    const closeModalBtn = document.getElementById('closeModal');
     
-    // Upload
-    document.getElementById('uploadFab').addEventListener('click', () => {
-        if (currentUser) {
-            openModal('uploadModal');
-        } else {
-            openModal('loginModal');
-        }
-    });
+    if (githubLoginBtn) githubLoginBtn.addEventListener('click', loginWithGitHub);
+    if (googleLoginBtn) googleLoginBtn.addEventListener('click', loginWithGoogle);
+    if (closeModalBtn) closeModalBtn.addEventListener('click', () => closeModal('loginModal'));
     
-    document.getElementById('closeUploadModal').addEventListener('click', () => closeModal('uploadModal'));
-    document.getElementById('uploadForm').addEventListener('submit', handleUploadSubmit);
+    const uploadFab = document.getElementById('uploadFab');
+    if (uploadFab) {
+        uploadFab.addEventListener('click', () => {
+            if (currentUser) {
+                openModal('uploadModal');
+            } else {
+                openModal('loginModal');
+            }
+        });
+    }
     
-    // Close modal on outside click
+    const closeUploadModalBtn = document.getElementById('closeUploadModal');
+    const uploadForm = document.getElementById('uploadForm');
+    
+    if (closeUploadModalBtn) closeUploadModalBtn.addEventListener('click', () => closeModal('uploadModal'));
+    if (uploadForm) uploadForm.addEventListener('submit', handleUploadSubmit);
+    
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.classList.remove('active');
-            }
+            if (e.target === modal) modal.classList.remove('active');
         });
     });
     
-    // Search and filter
     setupSearchAndFilter();
     
-    // Search button
-    document.querySelector('.search-btn').addEventListener('click', () => {
-        document.getElementById('searchInput').focus();
-    });
+    const searchBtn = document.querySelector('.search-btn');
+    if (searchBtn) {
+        searchBtn.addEventListener('click', () => {
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) searchInput.focus();
+        });
+    }
 }
 
-// Make functions available globally
 window.downloadSubtitle = downloadSubtitle;
 window.deleteSubtitle = deleteSubtitle;
+
+console.log('✅ app.js loaded successfully (5MB chunked upload support)');
