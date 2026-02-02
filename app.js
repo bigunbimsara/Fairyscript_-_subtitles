@@ -5,6 +5,7 @@ let unsubscribeSubtitles = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('App initializing...');
     setupAuthListener();
     setupEventListeners();
 });
@@ -22,33 +23,60 @@ function setupAuthListener() {
                 provider: user.providerData[0]?.providerId
             };
             
-            console.log('User logged in:', currentUser);
+            console.log('✅ User logged in:', currentUser.email);
             updateUIForUser();
             loadSubtitles();
         } else {
             currentUser = null;
-            console.log('User logged out');
+            console.log('❌ User logged out');
             updateUIForLoggedOut();
-            loadSubtitles(); // Still load subtitles for viewing
+            loadSubtitles();
         }
     });
 }
 
 function loginWithGitHub() {
+    const githubProvider = new firebase.auth.GithubAuthProvider();
+    
     auth.signInWithPopup(githubProvider)
         .then((result) => {
-            console.log('Login successful:', result.user);
+            console.log('GitHub login successful');
             closeModal('loginModal');
             showNotification('Login successful! Welcome ' + result.user.displayName);
         })
         .catch((error) => {
-            console.error('Login error:', error);
-            if (error.code === 'auth/popup-closed-by-user') {
-                showNotification('Login cancelled', 'error');
-            } else {
-                showNotification('Login failed. Please try again.', 'error');
-            }
+            console.error('GitHub login error:', error);
+            handleLoginError(error);
         });
+}
+
+function loginWithGoogle() {
+    const googleProvider = new firebase.auth.GoogleAuthProvider();
+    
+    auth.signInWithPopup(googleProvider)
+        .then((result) => {
+            console.log('Google login successful');
+            closeModal('loginModal');
+            showNotification('Login successful! Welcome ' + result.user.displayName);
+        })
+        .catch((error) => {
+            console.error('Google login error:', error);
+            handleLoginError(error);
+        });
+}
+
+function handleLoginError(error) {
+    console.error('Login error details:', error.code, error.message);
+    
+    if (error.code === 'auth/popup-closed-by-user') {
+        showNotification('Login cancelled', 'error');
+    } else if (error.code === 'auth/unauthorized-domain') {
+        showNotification('Domain not authorized. Add to Firebase: ' + window.location.hostname, 'error');
+    } else if (error.code === 'auth/popup-blocked') {
+        showNotification('Popup blocked. Please allow popups.', 'error');
+    } else {
+        showNotification('Login failed: ' + error.message, 'error');
+    }
 }
 
 function logout() {
@@ -91,13 +119,12 @@ function updateUIForLoggedOut() {
 
 function loadSubtitles() {
     showLoading(true);
+    console.log('Loading subtitles from Firestore...');
     
-    // Unsubscribe from previous listener if exists
     if (unsubscribeSubtitles) {
         unsubscribeSubtitles();
     }
     
-    // Real-time listener for subtitles
     unsubscribeSubtitles = db.collection('subtitles')
         .orderBy('uploadDate', 'desc')
         .onSnapshot((snapshot) => {
@@ -109,12 +136,12 @@ function loadSubtitles() {
                 });
             });
             
-            console.log('Loaded subtitles:', subtitles.length);
+            console.log('✅ Loaded subtitles:', subtitles.length);
             renderSubtitles();
             showLoading(false);
         }, (error) => {
-            console.error('Error loading subtitles:', error);
-            showNotification('Failed to load subtitles', 'error');
+            console.error('❌ Error loading subtitles:', error);
+            showNotification('Failed to load subtitles: ' + error.message, 'error');
             showLoading(false);
         });
 }
@@ -142,7 +169,9 @@ function renderSubtitles(filtered = null) {
 }
 
 function createSubtitleCard(subtitle) {
-    const imageUrl = subtitle.imageUrl || 'data:image/svg+xml,%3Csvg width="300" height="200" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="300" height="200" fill="%23222"/%3E%3Ctext x="50%25" y="50%25" fill="%23666" font-size="16" text-anchor="middle" dy=".3em"%3E' + encodeURIComponent(subtitle.title.substring(0, 20)) + '%3C/text%3E%3C/svg%3E';
+    const imageUrl = subtitle.imageData || subtitle.imageUrl || 
+        'data:image/svg+xml,%3Csvg width="300" height="200" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="300" height="200" fill="%23222"/%3E%3Ctext x="50%25" y="50%25" fill="%23666" font-size="16" text-anchor="middle" dy=".3em"%3E' + 
+        encodeURIComponent(subtitle.title.substring(0, 20)) + '%3C/text%3E%3C/svg%3E';
     
     const uploadDate = subtitle.uploadDate?.toDate ? 
         subtitle.uploadDate.toDate().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) :
@@ -153,7 +182,7 @@ function createSubtitleCard(subtitle) {
     return `
         <div class="subtitle-card" data-id="${subtitle.id}">
             <div class="subtitle-thumbnail">
-                <img src="${imageUrl}" alt="${subtitle.title}" loading="lazy">
+                <img src="${imageUrl}" alt="${subtitle.title}" loading="lazy" onerror="this.src='data:image/svg+xml,%3Csvg width=\\'300\\' height=\\'200\\' xmlns=\\'http://www.w3.org/2000/svg\\'%3E%3Crect width=\\'300\\' height=\\'200\\' fill=\\'%23222\\'/%3E%3C/svg%3E'">
                 ${canDelete ? `<button class="delete-btn" onclick="deleteSubtitle('${subtitle.id}')" title="Delete">🗑️</button>` : ''}
             </div>
             <div class="subtitle-info">
@@ -187,35 +216,39 @@ function createSubtitleCard(subtitle) {
 
 async function downloadSubtitle(id) {
     const subtitle = subtitles.find(s => s.id === id);
-    if (!subtitle || !subtitle.fileUrl) {
-        showNotification('Subtitle file not found', 'error');
+    if (!subtitle) {
+        showNotification('Subtitle not found', 'error');
         return;
     }
     
     try {
-        // Increment download count
         await db.collection('subtitles').doc(id).update({
             downloads: firebase.firestore.FieldValue.increment(1)
         });
         
-        // Download the file
-        const link = document.createElement('a');
-        link.href = subtitle.fileUrl;
-        link.download = subtitle.fileName || `${subtitle.title}.srt`;
-        link.target = '_blank';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        if (subtitle.fileData) {
+            const blob = base64ToBlob(subtitle.fileData, 'text/plain');
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = subtitle.fileName || `${subtitle.title}.srt`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            setTimeout(() => URL.revokeObjectURL(url), 100);
+        } else {
+            showNotification('Subtitle file not found', 'error');
+            return;
+        }
         
         showNotification('Download started!');
         
-        // Visual feedback
         const card = document.querySelector(`[data-id="${id}"]`);
         if (card) {
             card.style.transform = 'scale(0.98)';
-            setTimeout(() => {
-                card.style.transform = '';
-            }, 200);
+            setTimeout(() => card.style.transform = '', 200);
         }
     } catch (error) {
         console.error('Download error:', error);
@@ -232,7 +265,6 @@ async function deleteSubtitle(id) {
     const subtitle = subtitles.find(s => s.id === id);
     if (!subtitle) return;
     
-    // Check ownership
     if (subtitle.uploaderId !== currentUser.uid) {
         showNotification('You can only delete your own subtitles', 'error');
         return;
@@ -244,24 +276,7 @@ async function deleteSubtitle(id) {
     
     try {
         showNotification('Deleting...');
-        
-        // Delete file from storage
-        if (subtitle.filePath) {
-            await storage.ref(subtitle.filePath).delete().catch(err => {
-                console.warn('File deletion warning:', err);
-            });
-        }
-        
-        // Delete image from storage
-        if (subtitle.imagePath) {
-            await storage.ref(subtitle.imagePath).delete().catch(err => {
-                console.warn('Image deletion warning:', err);
-            });
-        }
-        
-        // Delete from Firestore
         await db.collection('subtitles').doc(id).delete();
-        
         showNotification('Subtitle deleted successfully');
     } catch (error) {
         console.error('Delete error:', error);
@@ -274,11 +289,18 @@ async function deleteSubtitle(id) {
 async function handleUploadSubmit(e) {
     e.preventDefault();
     
+    console.log('═══════════════════════════════');
+    console.log('🚀 UPLOAD STARTED');
+    console.log('═══════════════════════════════');
+    
     if (!currentUser) {
+        console.error('❌ Not logged in!');
         showNotification('Please login first', 'error');
         openModal('loginModal');
         return;
     }
+    
+    console.log('✅ User:', currentUser.email, '(', currentUser.uid, ')');
     
     const title = document.getElementById('titleInput').value.trim();
     const description = document.getElementById('descriptionInput').value.trim();
@@ -288,50 +310,58 @@ async function handleUploadSubmit(e) {
     const year = document.getElementById('uploadYear').value;
     const genre = document.getElementById('uploadGenre').value;
     
+    console.log('📝 Form Data:');
+    console.log('  - Title:', title);
+    console.log('  - Description:', description || '(none)');
+    console.log('  - Subtitle file:', subtitleFile ? subtitleFile.name : '(none)');
+    console.log('  - Subtitle size:', subtitleFile ? (subtitleFile.size / 1024).toFixed(2) + ' KB' : 'N/A');
+    console.log('  - Image file:', imageFile ? imageFile.name : '(none)');
+    console.log('  - Image size:', imageFile ? (imageFile.size / 1024).toFixed(2) + ' KB' : 'N/A');
+    
     if (!title || !subtitleFile) {
+        console.error('❌ Missing required fields');
         showNotification('Please provide title and subtitle file', 'error');
         return;
     }
     
-    // Validate file size (5MB for subtitle, 2MB for image)
-    if (subtitleFile.size > 5 * 1024 * 1024) {
-        showNotification('Subtitle file is too large (max 5MB)', 'error');
+    // File size validation
+    const maxSubtitleSize = 300 * 1024; // 300KB
+    const maxImageSize = 200 * 1024; // 200KB
+    
+    if (subtitleFile.size > maxSubtitleSize) {
+        const sizeMB = (subtitleFile.size / 1024).toFixed(2);
+        console.error('❌ Subtitle file too large:', sizeMB, 'KB (max: 300KB)');
+        showNotification(`Subtitle file too large! Current: ${sizeMB}KB, Max: 300KB. Please use a smaller file.`, 'error');
         return;
     }
     
-    if (imageFile && imageFile.size > 2 * 1024 * 1024) {
-        showNotification('Image file is too large (max 2MB)', 'error');
+    if (imageFile && imageFile.size > maxImageSize) {
+        const sizeMB = (imageFile.size / 1024).toFixed(2);
+        console.error('❌ Image file too large:', sizeMB, 'KB (max: 200KB)');
+        showNotification(`Image too large! Current: ${sizeMB}KB, Max: 200KB. Please compress it.`, 'error');
         return;
     }
     
     try {
         setUploadingState(true);
         
-        // Upload subtitle file to Storage
-        const subtitlePath = `subtitles/${currentUser.uid}/${Date.now()}_${subtitleFile.name}`;
-        const subtitleRef = storage.ref(subtitlePath);
-        await subtitleRef.put(subtitleFile);
-        const subtitleUrl = await subtitleRef.getDownloadURL();
+        console.log('📖 Reading subtitle file...');
+        const subtitleData = await fileToBase64(subtitleFile);
+        console.log('✅ Subtitle read successfully, length:', subtitleData.length, 'chars');
         
-        // Upload image if provided
-        let imageUrl = null;
-        let imagePath = null;
+        let imageData = null;
         if (imageFile) {
-            imagePath = `images/${currentUser.uid}/${Date.now()}_${imageFile.name}`;
-            const imageRef = storage.ref(imagePath);
-            await imageRef.put(imageFile);
-            imageUrl = await imageRef.getDownloadURL();
+            console.log('📖 Reading image file...');
+            imageData = await fileToBase64(imageFile);
+            console.log('✅ Image read successfully, length:', imageData.length, 'chars');
         }
         
-        // Create subtitle document in Firestore
-        const subtitleData = {
+        const subtitleDoc = {
             title,
             description,
-            fileUrl: subtitleUrl,
-            filePath: subtitlePath,
+            fileData: subtitleData,
             fileName: subtitleFile.name,
-            imageUrl,
-            imagePath,
+            imageData: imageData,
             country,
             year,
             genre,
@@ -341,18 +371,75 @@ async function handleUploadSubmit(e) {
             downloads: 0
         };
         
-        await db.collection('subtitles').add(subtitleData);
+        // Check document size
+        const docString = JSON.stringify(subtitleDoc);
+        const docSize = docString.length;
+        const docSizeKB = (docSize / 1024).toFixed(2);
+        const maxSize = 1048576; // 1MB in bytes
+        
+        console.log('📦 Document size:', docSizeKB, 'KB (max: 1024KB)');
+        
+        if (docSize > maxSize) {
+            throw new Error(`Document too large: ${docSizeKB}KB. Maximum is 1024KB. Please use smaller files.`);
+        }
+        
+        console.log('☁️ Uploading to Firestore...');
+        const docRef = await db.collection('subtitles').add(subtitleDoc);
+        
+        console.log('═══════════════════════════════');
+        console.log('✅ SUCCESS!');
+        console.log('Document ID:', docRef.id);
+        console.log('═══════════════════════════════');
         
         showNotification('Subtitle uploaded successfully! 🎉');
         closeModal('uploadModal');
         document.getElementById('uploadForm').reset();
         
     } catch (error) {
-        console.error('Upload error:', error);
-        showNotification('Upload failed. Please try again.', 'error');
+        console.log('═══════════════════════════════');
+        console.error('❌ UPLOAD FAILED');
+        console.error('Error Code:', error.code);
+        console.error('Error Message:', error.message);
+        console.error('Full Error:', error);
+        console.log('═══════════════════════════════');
+        
+        // User-friendly error messages
+        if (error.code === 'permission-denied') {
+            showNotification('Permission denied! Please check Firestore rules in Firebase Console.', 'error');
+            console.error('💡 Fix: Go to Firebase Console → Firestore → Rules');
+        } else if (error.message.includes('too large') || error.message.includes('Document')) {
+            showNotification(error.message, 'error');
+            console.error('💡 Fix: Use smaller files (subtitle < 300KB, image < 200KB)');
+        } else if (error.code === 'unauthenticated') {
+            showNotification('Session expired. Please logout and login again.', 'error');
+            console.error('💡 Fix: Logout → Login again');
+        } else if (error.code === 'unavailable') {
+            showNotification('Network error. Please check your internet connection.', 'error');
+        } else {
+            showNotification('Upload failed: ' + error.message, 'error');
+        }
     } finally {
         setUploadingState(false);
     }
+}
+
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+function base64ToBlob(base64, mimeType) {
+    const byteString = atob(base64.split(',')[1]);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+    }
+    return new Blob([ab], { type: mimeType });
 }
 
 function setUploadingState(uploading) {
@@ -421,18 +508,14 @@ function showLoading(show) {
 }
 
 function showNotification(message, type = 'success') {
-    // Create notification element
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
     notification.textContent = message;
     
-    // Add to body
     document.body.appendChild(notification);
     
-    // Show notification
     setTimeout(() => notification.classList.add('show'), 10);
     
-    // Remove after 3 seconds
     setTimeout(() => {
         notification.classList.remove('show');
         setTimeout(() => notification.remove(), 300);
@@ -442,7 +525,6 @@ function showNotification(message, type = 'success') {
 // ========== EVENT LISTENERS ==========
 
 function setupEventListeners() {
-    // Login
     document.getElementById('loginBtn').addEventListener('click', () => {
         if (!currentUser) {
             openModal('loginModal');
@@ -450,9 +532,9 @@ function setupEventListeners() {
     });
     
     document.getElementById('githubLoginBtn').addEventListener('click', loginWithGitHub);
+    document.getElementById('googleLoginBtn').addEventListener('click', loginWithGoogle);
     document.getElementById('closeModal').addEventListener('click', () => closeModal('loginModal'));
     
-    // Upload
     document.getElementById('uploadFab').addEventListener('click', () => {
         if (currentUser) {
             openModal('uploadModal');
@@ -464,7 +546,6 @@ function setupEventListeners() {
     document.getElementById('closeUploadModal').addEventListener('click', () => closeModal('uploadModal'));
     document.getElementById('uploadForm').addEventListener('submit', handleUploadSubmit);
     
-    // Close modal on outside click
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
@@ -473,15 +554,14 @@ function setupEventListeners() {
         });
     });
     
-    // Search and filter
     setupSearchAndFilter();
     
-    // Search button
     document.querySelector('.search-btn').addEventListener('click', () => {
         document.getElementById('searchInput').focus();
     });
 }
 
-// Make functions available globally
 window.downloadSubtitle = downloadSubtitle;
 window.deleteSubtitle = deleteSubtitle;
+
+console.log('✅ App.js loaded successfully');
