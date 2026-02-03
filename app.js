@@ -738,9 +738,25 @@ function setupEventListeners() {
             if (searchInput) searchInput.focus();
         });
     }
+    
+    // Quick search tags
+    document.querySelectorAll('.quick-tag').forEach(tag => {
+        tag.addEventListener('click', () => {
+            const searchTerm = tag.getAttribute('data-search');
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+                searchInput.value = searchTerm;
+                searchInput.dispatchEvent(new Event('input'));
+                
+                // Visual feedback
+                document.querySelectorAll('.quick-tag').forEach(t => t.classList.remove('active'));
+                tag.classList.add('active');
+            }
+        });
+    });
 }
 
 window.downloadSubtitle = downloadSubtitle;
 window.deleteSubtitle = deleteSubtitle;
 
-console.log('✅ app.js loaded successfully (5MB chunked upload support)');
+console.log('✅ app.js loaded successfully (5MB chunked upload support + Modern UI)');
